@@ -15,6 +15,7 @@ local Clamp = math.clamp
 local Min = math.min
 local Max = math.max
 local Floor = math.floor
+local Huge = math.huge
 local TwoPi = math.pi * 2
 local Sort = table.sort
 local Spawn = task.spawn
@@ -235,23 +236,10 @@ end
 
 -- Debris
 do
-    Debriswork.Launch = function(Piece, Impact, Direction, Config)
-        Piece.Anchored = false
+    Debriswork.Finalize = function(Piece, Config)
         Piece.CanCollide = true
         Piece.CollisionGroup = Config.CollisionGroup or DebrisGroup
         Piece.Parent = Container
-
-        local Offset = Piece.Position - Impact
-        local Distance = Offset.Magnitude
-        local Outward = Distance > 0.001 and Offset / Distance or Sites.RandomUnit()
-        local Falloff = Config.ImpactRadius / (Distance + Config.ImpactRadius)
-        local SizeFactor = Clamp(Config.ChunkSize / Max(Piece.Size.Magnitude, 0.1), 0.55, 2.2)
-
-        Piece.AssemblyLinearVelocity = Outward * Config.ImpactForce * Falloff * SizeFactor
-            + Direction * Config.Penetration
-            + Sites.RandomUnit() * Config.Scatter
-
-        Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin * SizeFactor
 
         if Config.Gravity then
             Gravity.Apply(Piece, Config.Gravity)
@@ -267,6 +255,31 @@ do
                 end
             end)
         end
+    end
+
+    Debriswork.Launch = function(Piece, Impact, Direction, Config)
+        Piece.Anchored = false
+
+        local Offset = Piece.Position - Impact
+        local Distance = Offset.Magnitude
+        local Outward = Distance > 0.001 and Offset / Distance or Sites.RandomUnit()
+        local Falloff = Config.ImpactRadius / (Distance + Config.ImpactRadius)
+        local SizeFactor = Clamp(Config.ChunkSize / Max(Piece.Size.Magnitude, 0.1), 0.55, 2.2)
+
+        Piece.AssemblyLinearVelocity = Outward * Config.ImpactForce * Falloff * SizeFactor
+            + Direction * Config.Penetration
+            + Sites.RandomUnit() * Config.Scatter
+
+        Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin * SizeFactor
+
+        Debriswork.Finalize(Piece, Config)
+    end
+
+    Debriswork.Drop = function(Piece, Config)
+        Piece.Anchored = false
+        Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin * 0.3
+
+        Debriswork.Finalize(Piece, Config)
     end
 
     Debriswork.Dust = function(Position, Config)
@@ -326,7 +339,8 @@ do
             Config = Config,
             Cells = {},
             Total = 0,
-            Alive = 0
+            Alive = 0,
+            Base = Huge
         }
 
         for i = 1, #Fragments do
@@ -339,12 +353,78 @@ do
             Structure.Total += 1
             Structure.Alive += 1
             Structure.Cells[Structure.Total] = Cell
+            Structure.Base = Min(Structure.Base, Cell.Position.Y)
             CellLookup[Cell] = Structure
         end
 
         Part:Destroy()
 
         return Structure
+    end
+
+    Structures.Settle = function(Structure)
+        local Config = Structure.Config
+        local Reach = Config.ChunkSize * 1.5
+        local ReachSq = Reach * Reach
+        local Grounded = Structure.Base + Config.ChunkSize
+
+        local Live = {}
+        local LiveIndex = 0
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent then
+                LiveIndex += 1
+                Live[LiveIndex] = {Index = i, Cell = Cell, Position = Cell.Position, Reached = false}
+            end
+        end
+
+        local Queue = {}
+        local QueueIndex = 0
+
+        for i = 1, LiveIndex do
+            local Entry = Live[i]
+
+            if Entry.Position.Y <= Grounded then
+                Entry.Reached = true
+                QueueIndex += 1
+                Queue[QueueIndex] = Entry
+            end
+        end
+
+        local Head = 0
+
+        while Head < QueueIndex do
+            Head += 1
+            local Current = Queue[Head].Position
+
+            for i = 1, LiveIndex do
+                local Other = Live[i]
+
+                if not Other.Reached then
+                    local Delta = Other.Position - Current
+
+                    if Delta.X * Delta.X + Delta.Y * Delta.Y + Delta.Z * Delta.Z <= ReachSq then
+                        Other.Reached = true
+                        QueueIndex += 1
+                        Queue[QueueIndex] = Other
+                    end
+                end
+            end
+        end
+
+        for i = 1, LiveIndex do
+            local Entry = Live[i]
+
+            if not Entry.Reached then
+                Structure.Cells[Entry.Index] = nil
+                Structure.Alive -= 1
+                CellLookup[Entry.Cell] = nil
+
+                Debriswork.Drop(Entry.Cell, Config)
+            end
+        end
     end
 
     Structures.Chip = function(Structure, Position, Damage, Direction)
@@ -393,6 +473,8 @@ do
                 Cell.Color = Cell.Color:Lerp(ZeroColor, Config.Scorch)
             end
         end
+
+        Structures.Settle(Structure)
 
         if Config.Dust then
             Debriswork.Dust(Position, Config)
