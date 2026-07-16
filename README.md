@@ -52,8 +52,35 @@ Passed as the second arg to `Register`, all optional.
 | Spin | 12 | random angular velocity |
 | Lifetime | 6 | seconds before debris is cleaned up |
 | CollisionGroup | nil | collision group for the fragments |
+| Gravity | nil | body name so debris falls under that gravity, see below |
 | OnDamage | nil | fires each hit: part, health, maxHealth, position |
 | OnBreak | nil | fires on shatter: part, impact, fragmentCount |
+
+## gravity
+
+Rubble ships with a small gravity module at `Rubble.Gravity`, mostly so the debris can fall at a real rate, but it works standalone on anything.
+
+The catch with "1:1 Earth" is that Roblox measures gravity in studs and reality measures it in metres, so the two only line up once you pick a stud-to-metre scale. The module holds every body's real surface gravity in m/s² and multiplies by that scale, which defaults to 20. I landed on 20 because Roblox's own default gravity of 196.2 turns out to be Earth at 20.007 studs per metre, so it's already tuned to look right and I'm just matching it. If you actually want the literal 9.80665 you can drop the scale to 1, but fair warning, everything falls in slow motion because a 5-stud character is then a 5-metre giant.
+
+```lua
+local Gravity = require(game.ReplicatedStorage.Rubble).Gravity
+
+Gravity.SetWorld("Earth")      -- Workspace.Gravity = 196.2
+Gravity.SetWorld("Moon")       -- 32.4, everything drifts
+Gravity.Reset()                -- back to Roblox default
+
+Gravity.SetScale(1)            -- switch to 1 stud = 1 metre
+Gravity.Earth()                -- now 9.80665, proper floaty realism
+```
+
+`Apply` puts one object on its own gravity without touching the rest of the world, which is what the `Gravity` config key uses under the hood so you can have moon-gravity debris in an earth-gravity level:
+
+```lua
+Gravity.Apply(someFragment, "Moon")
+Gravity.Remove(someFragment)
+```
+
+Bodies included: Earth, Moon, Mars, Mercury, Venus, Jupiter, Saturn, Uranus, Neptune, Pluto, Sun. `Gravity.Studs(body)` gives you the studs/s² value if you just want the number.
 
 ## api
 

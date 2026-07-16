@@ -20,6 +20,8 @@ local GeometryService = game:GetService("GeometryService")
 local Debris = game:GetService("Debris")
 local Workspace = game:GetService("Workspace")
 
+local Gravity = require(script.Gravity)
+
 
 -- Constants
 local ZeroVector = Vector3.zero
@@ -40,6 +42,7 @@ local Defaults = {
     Lifetime = 6,
     Fade = 1,
     CollisionGroup = nil,
+    Gravity = nil,
     OnDamage = nil,
     OnBreak = nil
 }
@@ -166,6 +169,10 @@ do
             + Scatter
 
         Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin
+
+        if Config.Gravity then
+            Gravity.Apply(Piece, Config.Gravity)
+        end
 
         Debris:AddItem(Piece, Config.Lifetime + Random() * Config.Fade)
     end
@@ -301,5 +308,7 @@ do
     end
 end
 
+
+Rubble.Gravity = Gravity
 
 return Rubble
