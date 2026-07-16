@@ -1,14 +1,16 @@
 # Rubble
 
-Destructible objects for Roblox that break where you actually hit them. You give a part some health, hit it a few times, and when it finally gives it shatters into fine shards right at the impact and coarse chunks everywhere else, all thrown outward from the spot the hit landed. It works on parts and meshes alike because the engine does the cutting.
+Destructible objects for Roblox that break where you actually hit them, a chunk at a time. Hit a wall and it knocks a small piece out right at the impact, hit it again and the hole grows, and how fast it gives way depends on how thick it is, a thin wall punches through in a couple hits while a thick one just gets chewed at. It works on parts and meshes alike because the engine does the cutting.
 
-It's built on the Fragment API that shipped in mid-2026 (`GeometryService:FragmentAsync`), so this is not another hand-rolled voronoi slicer. The engine handles turning geometry into pieces. What Rubble adds is the two things the raw API doesn't: a **damage model** so things wear down over several hits instead of popping in one, and **impact-localized fracturing** so a hit cracks the surface it struck rather than uniformly exploding the whole object like a bomb went off in the middle.
+It's built on the Fragment API that shipped in mid-2026 (`GeometryService:FragmentAsync`), so this isn't another hand-rolled voronoi slicer, the engine turns geometry into pieces. What Rubble adds is the part the raw API doesn't have: a system that lets you erode an object gradually and locally, instead of one call that turns the whole thing to rubble at once.
 
-## the impact trick
+## two modes
 
-`FragmentAsync` builds a 3D voronoi diagram from a list of points you hand it, one cell per point. Feed it an even spread and you get an even, boring break. The whole idea here is to feed it an *uneven* spread: a tight cluster of points packed around the impact, and a sparse scattering across the rest of the body. Cells come out tiny where the points are dense and big where they're sparse, so you get a crater of shards at the hit fading into large slabs at the edges. In testing the near shards come out around 5-6x smaller than the far chunks, which reads as a real impact instead of a shatter effect.
+`Mode = "Chip"` is the default and it's the progressive one. The first hit quietly fractures the whole part into little chunks and freezes them in place so it still looks solid, and every hit after that just knocks loose the chunks near the impact. Because those chunks run through the full thickness of the wall, a thin wall's chunks reach all the way through and you get a real hole on the first solid hit, while a thick wall only loses the ones near the surface and takes a dent. The thickness behaviour isn't special-cased anywhere, it just falls out of the geometry. Once enough of it is gone (`CollapseAt`) whatever's left drops.
 
-Then every fragment gets launched with a falloff, the pieces sitting on the impact fly hardest and the far ones barely move, plus a nudge along the hit direction so it looks like something drove through it.
+`Mode = "Shatter"` is the one-shot version. It carries a health value, wears down over hits, and when it hits zero the whole thing blows apart at once. The neat bit here is the fracture is biased toward the impact: `FragmentAsync` builds its cells around a list of points, so Rubble packs points tight at the hit and sparse elsewhere, which gives you fine shards at the impact fading to coarse slabs at the edges. In testing the near shards come out around 5-6x smaller than the far chunks, so it reads as a real impact and not a uniform pop.
+
+Either way, the pieces launch with a falloff so the ones on the impact fly hardest and the far ones barely move, plus a nudge along the hit direction so it looks like something drove through it.
 
 ## requirements
 
@@ -40,12 +42,18 @@ Passed as the second arg to `Register`, all optional.
 
 | key | default | what it does |
 | --- | --- | --- |
-| Health | 100 | hits worth of damage before it breaks |
-| ImpactCount | 24 | shard points clustered at the hit |
+| Mode | "Chip" | "Chip" for progressive holes, "Shatter" for one-shot |
+| ChunkSize | 2.6 | stud size of the chunks in chip mode, smaller is finer |
+| ChipRadius | 2.4 | studs knocked loose per hit |
+| ChipPower | 0.015 | how much extra radius each point of damage adds |
+| CollapseAt | 0.3 | fraction of chunks left before the rest drops |
+| MaxCells | 120 | cap on chunks a part is prefractured into |
+| Health | 100 | shatter mode only, damage before it breaks |
+| ImpactCount | 24 | shatter mode, shard points clustered at the hit |
 | ImpactRadius | 2.4 | studs the shattered zone spreads |
 | ImpactSkew | 1.6 | higher pulls shards tighter to the center |
-| FarSpacing | 2.4 | stud spacing of the coarse chunks |
-| MaxFragments | 90 | hard cap on total pieces |
+| FarSpacing | 2.4 | shatter mode, spacing of the coarse chunks |
+| MaxFragments | 90 | shatter mode, cap on total pieces |
 | ImpactForce | 55 | outward launch speed at the impact |
 | Penetration | 20 | momentum carried along the hit direction |
 | Scatter | 8 | random spread on the launch |

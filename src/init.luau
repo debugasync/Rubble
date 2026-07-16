@@ -7,14 +7,11 @@ local Random = math.random
 local Sin = math.sin
 local Cos = math.cos
 local Acos = math.acos
-local Sqrt = math.sqrt
 local Min = math.min
 local Max = math.max
 local Floor = math.floor
-local Pi = math.pi
 local TwoPi = math.pi * 2
 local Spawn = task.spawn
-local Insert = table.insert
 
 local GeometryService = game:GetService("GeometryService")
 local Debris = game:GetService("Debris")
@@ -29,7 +26,13 @@ local ZeroVector = Vector3.zero
 
 -- Defaults
 local Defaults = {
+    Mode = "Chip",
     Health = 100,
+    ChunkSize = 2.6,
+    ChipRadius = 2.4,
+    ChipPower = 0.015,
+    CollapseAt = 0.3,
+    MaxCells = 120,
     FarSpacing = 2.4,
     ImpactCount = 24,
     ImpactRadius = 2.4,
@@ -52,14 +55,21 @@ local Defaults = {
 local Rubble = {}
 
 local Sites = {}
-local Registry = {}
 local Debriswork = {}
+local Structures = {}
+
+local Registry = {}
+local CellLookup = {}
 
 
 -- Debris container
 local Container = NewInstance("Folder")
 Container.Name = "Rubble"
 Container.Parent = Workspace
+
+local StandingFolder = NewInstance("Folder")
+StandingFolder.Name = "RubbleStructures"
+StandingFolder.Parent = Workspace
 
 
 -- Sites
@@ -84,6 +94,43 @@ do
         return Value
     end
 
+    Sites.Uniform = function(Part, Spacing, Cap)
+        local Size = Part.Size
+        local HalfX = Size.X * 0.5
+        local HalfY = Size.Y * 0.5
+        local HalfZ = Size.Z * 0.5
+
+        local CountX = Max(1, Floor(Size.X / Spacing))
+        local CountY = Max(1, Floor(Size.Y / Spacing))
+        local CountZ = Max(1, Floor(Size.Z / Spacing))
+
+        local StepX = Size.X / CountX
+        local StepY = Size.Y / CountY
+        local StepZ = Size.Z / CountZ
+
+        local Points = {}
+        local PointsIndex = 0
+
+        for Ix = 1, CountX do
+            for Iy = 1, CountY do
+                for Iz = 1, CountZ do
+                    if PointsIndex >= Cap then
+                        return Points, PointsIndex
+                    end
+
+                    PointsIndex += 1
+                    Points[PointsIndex] = Vector3New(
+                        -HalfX + (Ix - 0.5) * StepX + (Random() - 0.5) * StepX * 0.5,
+                        -HalfY + (Iy - 0.5) * StepY + (Random() - 0.5) * StepY * 0.5,
+                        -HalfZ + (Iz - 0.5) * StepZ + (Random() - 0.5) * StepZ * 0.5
+                    )
+                end
+            end
+        end
+
+        return Points, PointsIndex
+    end
+
     Sites.Generate = function(Part, ImpactLocal, Config)
         local Size = Part.Size
         local HalfX = Size.X * 0.5
@@ -98,8 +145,7 @@ do
 
         for i = 1, Config.ImpactCount do
             local Distance = Radius * (Random() ^ Skew)
-            local Direction = Sites.RandomUnit()
-            local Offset = Direction * Distance
+            local Offset = Sites.RandomUnit() * Distance
 
             PointsIndex += 1
             Points[PointsIndex] = Vector3New(
@@ -122,9 +168,9 @@ do
             for Iy = 1, CountY do
                 for Iz = 1, CountZ do
                     local Point = Vector3New(
-                        -HalfX + (Ix - 0.5) * StepX + (Random() - 0.5) * StepX * 0.6,
-                        -HalfY + (Iy - 0.5) * StepY + (Random() - 0.5) * StepY * 0.6,
-                        -HalfZ + (Iz - 0.5) * StepZ + (Random() - 0.5) * StepZ * 0.6
+                        -HalfX + (Ix - 0.5) * StepX,
+                        -HalfY + (Iy - 0.5) * StepY,
+                        -HalfZ + (Iz - 0.5) * StepZ
                     )
 
                     if (Point - ImpactLocal).Magnitude <= Radius then
@@ -143,6 +189,17 @@ do
 
         return Points, PointsIndex
     end
+
+    Sites.ToWorld = function(Part, Points, Count)
+        local CFrame = Part.CFrame
+        local World = {}
+
+        for i = 1, Count do
+            World[i] = CFrame:PointToWorldSpace(Points[i])
+        end
+
+        return World
+    end
 end
 
 
@@ -160,13 +217,11 @@ do
         local Offset = Piece.Position - Impact
         local Distance = Offset.Magnitude
         local Outward = Distance > 0.001 and Offset / Distance or Sites.RandomUnit()
-
         local Falloff = Config.ImpactRadius / (Distance + Config.ImpactRadius)
-        local Scatter = Sites.RandomUnit() * Config.Scatter
 
         Piece.AssemblyLinearVelocity = Outward * Config.ImpactForce * Falloff
             + Direction * Config.Penetration
-            + Scatter
+            + Sites.RandomUnit() * Config.Scatter
 
         Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin
 
@@ -175,6 +230,98 @@ do
         end
 
         Debris:AddItem(Piece, Config.Lifetime + Random() * Config.Fade)
+    end
+end
+
+
+-- Structures
+do
+    Structures.Prefracture = function(Part, Config)
+        local Points, Count = Sites.Uniform(Part, Config.ChunkSize, Config.MaxCells)
+
+        if Count < 2 then
+            return nil
+        end
+
+        local World = Sites.ToWorld(Part, Points, Count)
+
+        local Success, Fragments = pcall(function()
+            return GeometryService:FragmentAsync(Part, World)
+        end)
+
+        if not Success or not Fragments then
+            return nil
+        end
+
+        local Structure = {
+            Config = Config,
+            Cells = {},
+            Total = 0,
+            Alive = 0
+        }
+
+        for i = 1, #Fragments do
+            local Cell = Fragments[i].Instance
+            Cell.Anchored = true
+            Cell:SetAttribute("Destructible", true)
+            Cell.Parent = StandingFolder
+
+            Structure.Total += 1
+            Structure.Alive += 1
+            Structure.Cells[Structure.Total] = Cell
+            CellLookup[Cell] = Structure
+        end
+
+        Part:Destroy()
+
+        return Structure
+    end
+
+    Structures.Chip = function(Structure, Position, Damage, Direction)
+        local Config = Structure.Config
+        local Radius = Config.ChipRadius + (Damage or 0) * Config.ChipPower
+        local Hit = Direction or ZeroVector
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent and (Cell.Position - Position).Magnitude <= Radius then
+                Structure.Cells[i] = nil
+                Structure.Alive -= 1
+                CellLookup[Cell] = nil
+
+                Debriswork.Launch(Cell, Position, Hit, Config)
+            end
+        end
+
+        if Config.OnDamage then
+            Config.OnDamage(Structure, Structure.Alive, Structure.Total, Position)
+        end
+
+        if Structure.Alive <= Structure.Total * Config.CollapseAt then
+            Structures.Collapse(Structure, Position, Hit)
+        end
+    end
+
+    Structures.Collapse = function(Structure, Position, Direction)
+        local Config = Structure.Config
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent then
+                Structure.Cells[i] = nil
+                CellLookup[Cell] = nil
+
+                Debriswork.Launch(Cell, Position, Direction, Config)
+            end
+        end
+
+        Structure.Alive = 0
+
+        if Config.OnBreak then
+            Config.OnBreak(Structure, Position, Structure.Total)
+        end
     end
 end
 
@@ -197,10 +344,7 @@ do
                 return
             end
 
-            local World = {}
-            for i = 1, Count do
-                World[i] = Part.CFrame:PointToWorldSpace(Points[i])
-            end
+            local World = Sites.ToWorld(Part, Points, Count)
 
             local Success, Fragments = pcall(function()
                 return GeometryService:FragmentAsync(Part, World)
@@ -211,8 +355,7 @@ do
             end
 
             for i = 1, #Fragments do
-                local Piece = Fragments[i].Instance
-                Debriswork.Launch(Piece, Impact, Hit, Config)
+                Debriswork.Launch(Fragments[i].Instance, Impact, Hit, Config)
             end
 
             if Config.OnBreak then
@@ -254,50 +397,44 @@ do
     end
 
     Rubble.IsRegistered = function(Part)
-        return Registry[Part] ~= nil
+        return Registry[Part] ~= nil or CellLookup[Part] ~= nil
     end
 
-    Rubble.GetHealth = function(Part)
-        local Data = Registry[Part]
-
-        if not Data then
-            return nil
-        end
-
-        return Data.Health, Data.MaxHealth
-    end
-
-    Rubble.SetHealth = function(Part, Health)
-        local Data = Registry[Part]
+    Rubble.Hit = function(Instance, Position, Damage, Direction)
+        local Data = Registry[Instance]
 
         if Data then
-            Data.Health = Health
-        end
-    end
+            if Data.Config.Mode == "Chip" then
+                Registry[Instance] = nil
 
-    Rubble.Heal = function(Part, Amount)
-        local Data = Registry[Part]
+                Spawn(function()
+                    local Structure = Structures.Prefracture(Instance, Data.Config)
 
-        if Data then
-            Data.Health = Min(Data.Health + Amount, Data.MaxHealth)
-        end
-    end
+                    if Structure then
+                        Structures.Chip(Structure, Position, Damage, Direction)
+                    end
+                end)
 
-    Rubble.Hit = function(Part, Position, Damage, Direction)
-        local Data = Registry[Part]
+                return
+            end
 
-        if not Data then
+            Data.Health -= Damage or 0
+
+            if Data.Config.OnDamage then
+                Data.Config.OnDamage(Instance, Max(Data.Health, 0), Data.MaxHealth, Position)
+            end
+
+            if Data.Health <= 0 then
+                Rubble.Break(Instance, Position, Direction)
+            end
+
             return
         end
 
-        Data.Health -= Damage or 0
+        local Structure = CellLookup[Instance]
 
-        if Data.Config.OnDamage then
-            Data.Config.OnDamage(Part, Max(Data.Health, 0), Data.MaxHealth, Position)
-        end
-
-        if Data.Health <= 0 then
-            Rubble.Break(Part, Position, Direction)
+        if Structure then
+            Structures.Chip(Structure, Position, Damage, Direction)
         end
     end
 
