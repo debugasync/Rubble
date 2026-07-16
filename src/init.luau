@@ -16,6 +16,7 @@ local Min = math.min
 local Max = math.max
 local Floor = math.floor
 local TwoPi = math.pi * 2
+local Sort = table.sort
 local Spawn = task.spawn
 local Delay = task.delay
 
@@ -29,17 +30,20 @@ local Gravity = require(script.Gravity)
 
 -- Constants
 local ZeroVector = Vector3.zero
+local ZeroColor = Color3.new()
 
 
 -- Defaults
 local Defaults = {
     Mode = "Chip",
     Health = 100,
-    ChunkSize = 2.6,
+    ChunkSize = 1.8,
     ChipRadius = 2.4,
     ChipPower = 0.015,
-    CollapseAt = 0.3,
-    MaxCells = 120,
+    ChipPerHit = 6,
+    CollapseAt = 0.15,
+    Scorch = 0.16,
+    MaxCells = 160,
     FarSpacing = 2.4,
     ImpactCount = 24,
     ImpactRadius = 2.4,
@@ -332,15 +336,45 @@ do
         local Radius = Config.ChipRadius + (Damage or 0) * Config.ChipPower
         local Hit = Direction or ZeroVector
 
+        local Candidates = {}
+        local CandidatesIndex = 0
+
         for i = 1, Structure.Total do
             local Cell = Structure.Cells[i]
 
-            if Cell and Cell.Parent and (Cell.Position - Position).Magnitude <= Radius then
-                Structure.Cells[i] = nil
-                Structure.Alive -= 1
-                CellLookup[Cell] = nil
+            if Cell and Cell.Parent then
+                local Distance = (Cell.Position - Position).Magnitude
 
-                Debriswork.Launch(Cell, Position, Hit, Config)
+                if Distance <= Radius then
+                    CandidatesIndex += 1
+                    Candidates[CandidatesIndex] = {Index = i, Cell = Cell, Distance = Distance}
+                end
+            end
+        end
+
+        Sort(Candidates, function(Left, Right)
+            return Left.Distance < Right.Distance
+        end)
+
+        local Removed = Min(CandidatesIndex, Config.ChipPerHit)
+
+        for i = 1, Removed do
+            local Entry = Candidates[i]
+
+            Structure.Cells[Entry.Index] = nil
+            Structure.Alive -= 1
+            CellLookup[Entry.Cell] = nil
+
+            Debriswork.Launch(Entry.Cell, Position, Hit, Config)
+        end
+
+        local ScorchRadius = Radius * 1.5
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent and (Cell.Position - Position).Magnitude <= ScorchRadius then
+                Cell.Color = Cell.Color:Lerp(ZeroColor, Config.Scorch)
             end
         end
 

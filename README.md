@@ -6,7 +6,7 @@ It's built on the Fragment API that shipped in mid-2026 (`GeometryService:Fragme
 
 ## two modes
 
-`Mode = "Chip"` is the default and it's the progressive one. The first hit quietly fractures the whole part into little chunks and freezes them in place so it still looks solid, and every hit after that just knocks loose the chunks near the impact. Because those chunks run through the full thickness of the wall, a thin wall's chunks reach all the way through and you get a real hole on the first solid hit, while a thick wall only loses the ones near the surface and takes a dent. The thickness behaviour isn't special-cased anywhere, it just falls out of the geometry. Once enough of it is gone (`CollapseAt`) whatever's left drops.
+`Mode = "Chip"` is the default and it's the progressive one. The first hit quietly fractures the whole part into little chunks and freezes them in place so it still looks solid, and every hit after that knocks loose the nearest few chunks to the impact, capped by `ChipPerHit` so a single hit never clears the whole thing. Because those chunks run through the full thickness of the wall, a thin wall's chunks reach all the way through and you get a real hole on the first solid hit, while a thick wall only loses the ones near the surface and takes a dent. The thickness behaviour isn't special-cased anywhere, it just falls out of the geometry. The rim around each hole darkens a little every time it's hit, so the cracking builds up visibly, and once enough of the part is gone (`CollapseAt`) whatever's left drops.
 
 `Mode = "Shatter"` is the one-shot version. It carries a health value, wears down over hits, and when it hits zero the whole thing blows apart at once. The neat bit here is the fracture is biased toward the impact: `FragmentAsync` builds its cells around a list of points, so Rubble packs points tight at the hit and sparse elsewhere, which gives you fine shards at the impact fading to coarse slabs at the edges. In testing the near shards come out around 5-6x smaller than the far chunks, so it reads as a real impact and not a uniform pop.
 
@@ -43,11 +43,13 @@ Passed as the second arg to `Register`, all optional.
 | key | default | what it does |
 | --- | --- | --- |
 | Mode | "Chip" | "Chip" for progressive holes, "Shatter" for one-shot |
-| ChunkSize | 2.6 | stud size of the chunks in chip mode, smaller is finer |
-| ChipRadius | 2.4 | studs knocked loose per hit |
-| ChipPower | 0.015 | how much extra radius each point of damage adds |
-| CollapseAt | 0.3 | fraction of chunks left before the rest drops |
-| MaxCells | 120 | cap on chunks a part is prefractured into |
+| ChunkSize | 1.8 | stud size of the chunks in chip mode, smaller is finer |
+| ChipRadius | 2.4 | studs of reach per hit |
+| ChipPerHit | 6 | most chunks a single hit can knock loose, keeps it gradual |
+| ChipPower | 0.015 | how much extra reach each point of damage adds |
+| CollapseAt | 0.15 | fraction of chunks left before the rest drops |
+| Scorch | 0.16 | how much the rim darkens per hit, 0 to turn it off |
+| MaxCells | 160 | cap on chunks a part is prefractured into |
 | Health | 100 | shatter mode only, damage before it breaks |
 | ImpactCount | 24 | shatter mode, shard points clustered at the hit |
 | ImpactRadius | 2.4 | studs the shattered zone spreads |
