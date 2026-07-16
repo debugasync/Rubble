@@ -22,6 +22,7 @@ local Delay = task.delay
 
 local GeometryService = game:GetService("GeometryService")
 local TweenService = game:GetService("TweenService")
+local PhysicsService = game:GetService("PhysicsService")
 local Debris = game:GetService("Debris")
 local Workspace = game:GetService("Workspace")
 
@@ -31,19 +32,23 @@ local Gravity = require(script.Gravity)
 -- Constants
 local ZeroVector = Vector3.zero
 local ZeroColor = Color3.new()
+local BoxFidelity = Enum.CollisionFidelity.Box
+
+local StructureGroup = "RubbleStructure"
+local DebrisGroup = "RubbleDebris"
 
 
 -- Defaults
 local Defaults = {
     Mode = "Chip",
     Health = 100,
-    ChunkSize = 1.8,
+    ChunkSize = 2.4,
     ChipRadius = 2.4,
     ChipPower = 0.015,
     ChipPerHit = 6,
     CollapseAt = 0.15,
     Scorch = 0.16,
-    MaxCells = 160,
+    MaxCells = 80,
     FarSpacing = 2.4,
     ImpactCount = 24,
     ImpactRadius = 2.4,
@@ -82,6 +87,20 @@ Container.Parent = Workspace
 local StandingFolder = NewInstance("Folder")
 StandingFolder.Name = "RubbleStructures"
 StandingFolder.Parent = Workspace
+
+
+-- Collision groups
+do
+    pcall(function()
+        PhysicsService:RegisterCollisionGroup(StructureGroup)
+        PhysicsService:RegisterCollisionGroup(DebrisGroup)
+    end)
+
+    pcall(function()
+        PhysicsService:CollisionGroupSetCollidable(DebrisGroup, StructureGroup, false)
+        PhysicsService:CollisionGroupSetCollidable(DebrisGroup, DebrisGroup, false)
+    end)
+end
 
 
 -- Sites
@@ -220,11 +239,13 @@ do
     Debriswork.Launch = function(Piece, Impact, Direction, Config)
         Piece.Anchored = false
         Piece.CanCollide = true
-        Piece.Parent = Container
 
-        if Config.CollisionGroup then
-            Piece.CollisionGroup = Config.CollisionGroup
+        if Piece:IsA("MeshPart") then
+            Piece.CollisionFidelity = BoxFidelity
         end
+
+        Piece.CollisionGroup = Config.CollisionGroup or DebrisGroup
+        Piece.Parent = Container
 
         local Offset = Piece.Position - Impact
         local Distance = Offset.Magnitude
@@ -317,6 +338,12 @@ do
         for i = 1, #Fragments do
             local Cell = Fragments[i].Instance
             Cell.Anchored = true
+
+            if Cell:IsA("MeshPart") then
+                Cell.CollisionFidelity = BoxFidelity
+            end
+
+            Cell.CollisionGroup = StructureGroup
             Cell:SetAttribute("Destructible", true)
             Cell.Parent = StandingFolder
 

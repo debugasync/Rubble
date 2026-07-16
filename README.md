@@ -43,13 +43,13 @@ Passed as the second arg to `Register`, all optional.
 | key | default | what it does |
 | --- | --- | --- |
 | Mode | "Chip" | "Chip" for progressive holes, "Shatter" for one-shot |
-| ChunkSize | 1.8 | stud size of the chunks in chip mode, smaller is finer |
+| ChunkSize | 2.4 | stud size of the chunks in chip mode, smaller is finer but heavier |
 | ChipRadius | 2.4 | studs of reach per hit |
 | ChipPerHit | 6 | most chunks a single hit can knock loose, keeps it gradual |
 | ChipPower | 0.015 | how much extra reach each point of damage adds |
 | CollapseAt | 0.15 | fraction of chunks left before the rest drops |
 | Scorch | 0.16 | how much the rim darkens per hit, 0 to turn it off |
-| MaxCells | 160 | cap on chunks a part is prefractured into |
+| MaxCells | 80 | cap on chunks a part is prefractured into |
 | Health | 100 | shatter mode only, damage before it breaks |
 | ImpactCount | 24 | shatter mode, shard points clustered at the hit |
 | ImpactRadius | 2.4 | studs the shattered zone spreads |
@@ -106,9 +106,14 @@ Bodies included: Earth, Moon, Mars, Mercury, Venus, Jupiter, Saturn, Uranus, Nep
 | Heal(Part, Amount) | add health, capped at max |
 | Clear() | destroy all live debris |
 
+## performance
+
+Every chunk is a real part, so the count is what costs you. `ChunkSize` and `MaxCells` are the knobs, smaller chunks look better and hit the frame rate harder, and 2.4 with an 80 cap is a middle ground that holds up. The standing chunks and the debris are both dropped to box collision since nobody needs precise hull collision on rubble, and Rubble sets up two collision groups on load so the flying debris ignores the still-standing wall and ignores itself. That last part is what stops the freed chunks from wedging against the anchored ones and jittering when you chip the same wall from different sides.
+
 ## limitations
 
 - `MaxFragments` exists for a reason. Every fragment is a physics part, and a wall that bursts into 300 of them will drop the frame rate on anything, so the cap keeps it sane. Turn it up if your scene can afford it.
+- It registers two collision groups (`RubbleStructure`, `RubbleDebris`). If you already manage collision groups, know that debris goes in `RubbleDebris` and won't collide with your structure group or with each other unless you change that.
 - Debris just gets cleaned up on a timer right now. No settling detection, no merging small pieces back into static geometry, so a very active scene can pile up briefly before the timer catches up.
 - It fractures the whole part on break. Partial hits wear down the health and fire `OnDamage`, but they don't chip actual geometry off yet, that's the next thing I want to add and it's not here.
 - The fracture points are laid out in the bounding box, so a long thin or very hollow mesh will get points in empty space that produce nothing. Fine for walls, crates, rock, less ideal for a chandelier.
