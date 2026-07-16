@@ -3,17 +3,24 @@
 -- Variables
 local Vector3New = Vector3.new
 local NewInstance = Instance.new
+local NewSequence = NumberSequence.new
+local NewColorSequence = ColorSequence.new
+local NewRange = NumberRange.new
+local NewTweenInfo = TweenInfo.new
 local Random = math.random
 local Sin = math.sin
 local Cos = math.cos
 local Acos = math.acos
+local Clamp = math.clamp
 local Min = math.min
 local Max = math.max
 local Floor = math.floor
 local TwoPi = math.pi * 2
 local Spawn = task.spawn
+local Delay = task.delay
 
 local GeometryService = game:GetService("GeometryService")
+local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Workspace = game:GetService("Workspace")
 
@@ -46,6 +53,7 @@ local Defaults = {
     Fade = 1,
     CollisionGroup = nil,
     Gravity = nil,
+    Dust = nil,
     OnDamage = nil,
     OnBreak = nil
 }
@@ -218,18 +226,60 @@ do
         local Distance = Offset.Magnitude
         local Outward = Distance > 0.001 and Offset / Distance or Sites.RandomUnit()
         local Falloff = Config.ImpactRadius / (Distance + Config.ImpactRadius)
+        local SizeFactor = Clamp(Config.ChunkSize / Max(Piece.Size.Magnitude, 0.1), 0.55, 2.2)
 
-        Piece.AssemblyLinearVelocity = Outward * Config.ImpactForce * Falloff
+        Piece.AssemblyLinearVelocity = Outward * Config.ImpactForce * Falloff * SizeFactor
             + Direction * Config.Penetration
             + Sites.RandomUnit() * Config.Scatter
 
-        Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin
+        Piece.AssemblyAngularVelocity = Sites.RandomUnit() * Config.Spin * SizeFactor
 
         if Config.Gravity then
             Gravity.Apply(Piece, Config.Gravity)
         end
 
-        Debris:AddItem(Piece, Config.Lifetime + Random() * Config.Fade)
+        local Life = Config.Lifetime + Random() * Config.Fade
+        Debris:AddItem(Piece, Life)
+
+        if Config.Fade > 0 then
+            Delay(Max(Life - Config.Fade, 0), function()
+                if Piece.Parent then
+                    TweenService:Create(Piece, NewTweenInfo(Config.Fade), {Transparency = 1}):Play()
+                end
+            end)
+        end
+    end
+
+    Debriswork.Dust = function(Position, Config)
+        local Tint = typeof(Config.Dust) == "Color3" and Config.Dust or Color3.fromRGB(148, 138, 126)
+
+        local Host = NewInstance("Part")
+        Host.Anchored = true
+        Host.CanCollide = false
+        Host.Transparency = 1
+        Host.Size = Vector3New(0.1, 0.1, 0.1)
+        Host.CFrame = CFrame.new(Position)
+        Host.Parent = Container
+
+        local Emitter = NewInstance("ParticleEmitter")
+        Emitter.Color = NewColorSequence(Tint)
+        Emitter.Size = NewSequence({
+            NumberSequenceKeypoint.new(0, 1.2),
+            NumberSequenceKeypoint.new(1, 4)
+        })
+        Emitter.Transparency = NewSequence({
+            NumberSequenceKeypoint.new(0, 0.3),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        Emitter.Lifetime = NewRange(0.6, 1.2)
+        Emitter.Speed = NewRange(3, 8)
+        Emitter.SpreadAngle = Vector2.new(180, 180)
+        Emitter.Rotation = NewRange(0, 360)
+        Emitter.Rate = 0
+        Emitter.Parent = Host
+        Emitter:Emit(20)
+
+        Debris:AddItem(Host, 2)
     end
 end
 
@@ -294,6 +344,10 @@ do
             end
         end
 
+        if Config.Dust then
+            Debriswork.Dust(Position, Config)
+        end
+
         if Config.OnDamage then
             Config.OnDamage(Structure, Structure.Alive, Structure.Total, Position)
         end
@@ -356,6 +410,10 @@ do
 
             for i = 1, #Fragments do
                 Debriswork.Launch(Fragments[i].Instance, Impact, Hit, Config)
+            end
+
+            if Config.Dust then
+                Debriswork.Dust(Impact, Config)
             end
 
             if Config.OnBreak then
