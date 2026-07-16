@@ -32,7 +32,6 @@ local Gravity = require(script.Gravity)
 -- Constants
 local ZeroVector = Vector3.zero
 local ZeroColor = Color3.new()
-local BoxFidelity = Enum.CollisionFidelity.Box
 
 local StructureGroup = "RubbleStructure"
 local DebrisGroup = "RubbleDebris"
@@ -239,11 +238,6 @@ do
     Debriswork.Launch = function(Piece, Impact, Direction, Config)
         Piece.Anchored = false
         Piece.CanCollide = true
-
-        if Piece:IsA("MeshPart") then
-            Piece.CollisionFidelity = BoxFidelity
-        end
-
         Piece.CollisionGroup = Config.CollisionGroup or DebrisGroup
         Piece.Parent = Container
 
@@ -338,11 +332,6 @@ do
         for i = 1, #Fragments do
             local Cell = Fragments[i].Instance
             Cell.Anchored = true
-
-            if Cell:IsA("MeshPart") then
-                Cell.CollisionFidelity = BoxFidelity
-            end
-
             Cell.CollisionGroup = StructureGroup
             Cell:SetAttribute("Destructible", true)
             Cell.Parent = StandingFolder

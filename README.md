@@ -108,7 +108,9 @@ Bodies included: Earth, Moon, Mars, Mercury, Venus, Jupiter, Saturn, Uranus, Nep
 
 ## performance
 
-Every chunk is a real part, so the count is what costs you. `ChunkSize` and `MaxCells` are the knobs, smaller chunks look better and hit the frame rate harder, and 2.4 with an 80 cap is a middle ground that holds up. The standing chunks and the debris are both dropped to box collision since nobody needs precise hull collision on rubble, and Rubble sets up two collision groups on load so the flying debris ignores the still-standing wall and ignores itself. That last part is what stops the freed chunks from wedging against the anchored ones and jittering when you chip the same wall from different sides.
+Every chunk is a real part, so the count is what costs you. `ChunkSize` and `MaxCells` are the knobs, smaller chunks look better and hit the frame rate harder, and 2.4 with an 80 cap is a middle ground that holds up. Rubble also sets up two collision groups on load so the flying debris ignores the still-standing wall and ignores other debris, which is both a big physics saving and the thing that stops freed chunks from wedging against the anchored ones and jittering when you chip a wall from different sides. Debris only ends up colliding with the world, not with each other.
+
+Fragment meshes come in at whatever collision fidelity the engine picks, and a plain script can't change that (it's a plugin-only property), so the win here is keeping the chunk count down rather than cheapening each chunk's collision.
 
 ## limitations
 
