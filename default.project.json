@@ -1,0 +1,11 @@
+{
+    "name": "Rubble",
+    "tree": {
+        "$className": "DataModel",
+        "ReplicatedStorage": {
+            "Rubble": {
+                "$path": "src"
+            }
+        }
+    }
+}

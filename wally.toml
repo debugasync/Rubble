@@ -1,0 +1,7 @@
+[package]
+name = "debugasync/rubble"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+license = "MIT"
+description = "impact localized destruction for roblox, built on the fragment api"
