@@ -2,6 +2,7 @@
 
 -- Variables
 local Vector3New = Vector3.new
+local NewCFrame = CFrame.new
 local NewInstance = Instance.new
 local NewSequence = NumberSequence.new
 local NewColorSequence = ColorSequence.new
@@ -32,7 +33,6 @@ local Gravity = require(script.Gravity)
 
 -- Constants
 local ZeroVector = Vector3.zero
-local ZeroColor = Color3.new()
 
 local StructureGroup = "RubbleStructure"
 local DebrisGroup = "RubbleDebris"
@@ -47,7 +47,9 @@ local Defaults = {
     ChipPower = 0.015,
     ChipPerHit = 6,
     CollapseAt = 0.15,
-    Scorch = 0.16,
+    Carve = true,
+    DentRadius = 1.5,
+    CarvePerHit = 1,
     MaxCells = 80,
     FarSpacing = 2.4,
     ImpactCount = 24,
@@ -427,6 +429,63 @@ do
         end
     end
 
+    Structures.Carve = function(Structure, Position, Config)
+        local Radius = Config.DentRadius
+
+        local Targets = {}
+        local TargetsIndex = 0
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent then
+                local Distance = (Cell.Position - Position).Magnitude - Cell.Size.Magnitude * 0.5
+
+                if Distance <= Radius then
+                    TargetsIndex += 1
+                    Targets[TargetsIndex] = {Index = i, Cell = Cell, Distance = Distance}
+                end
+            end
+        end
+
+        Sort(Targets, function(Left, Right)
+            return Left.Distance < Right.Distance
+        end)
+
+        local Carved = Min(TargetsIndex, Config.CarvePerHit)
+
+        for i = 1, Carved do
+            local Entry = Targets[i]
+            local Cell = Entry.Cell
+
+            local Cutter = NewInstance("Part")
+            Cutter.Shape = Enum.PartType.Ball
+            Cutter.Size = Vector3New(Radius * 2, Radius * 2, Radius * 2)
+            Cutter.CFrame = NewCFrame(Position)
+            Cutter.Anchored = true
+
+            local Success, Result = pcall(function()
+                return Cell:SubtractAsync({Cutter})
+            end)
+
+            Cutter:Destroy()
+
+            if Success and Result and Cell.Parent then
+                Result.Anchored = true
+                Result.CollisionGroup = StructureGroup
+                Result.Color = Cell.Color
+                Result:SetAttribute("Destructible", true)
+                Result.Parent = StandingFolder
+
+                Structure.Cells[Entry.Index] = Result
+                CellLookup[Cell] = nil
+                CellLookup[Result] = Structure
+
+                Cell:Destroy()
+            end
+        end
+    end
+
     Structures.Chip = function(Structure, Position, Damage, Direction)
         local Config = Structure.Config
         local Radius = Config.ChipRadius + (Damage or 0) * Config.ChipPower
@@ -464,14 +523,8 @@ do
             Debriswork.Launch(Entry.Cell, Position, Hit, Config)
         end
 
-        local ScorchRadius = Radius * 1.5
-
-        for i = 1, Structure.Total do
-            local Cell = Structure.Cells[i]
-
-            if Cell and Cell.Parent and (Cell.Position - Position).Magnitude <= ScorchRadius then
-                Cell.Color = Cell.Color:Lerp(ZeroColor, Config.Scorch)
-            end
+        if Config.Carve then
+            Spawn(Structures.Carve, Structure, Position, Config)
         end
 
         Structures.Settle(Structure)
