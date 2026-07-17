@@ -15,6 +15,7 @@ local Acos = math.acos
 local Clamp = math.clamp
 local Min = math.min
 local Max = math.max
+local Abs = math.abs
 local Floor = math.floor
 local Huge = math.huge
 local TwoPi = math.pi * 2
@@ -33,6 +34,7 @@ local Gravity = require(script.Gravity)
 
 -- Constants
 local ZeroVector = Vector3.zero
+local CrackColor = Color3.fromRGB(16, 16, 18)
 
 local StructureGroup = "RubbleStructure"
 local DebrisGroup = "RubbleDebris"
@@ -45,9 +47,13 @@ local Defaults = {
     ChunkSize = 2.4,
     ChipRadius = 2.4,
     ChipPower = 0.015,
-    ChipPerHit = 6,
+    ChipPerHit = 3,
     CollapseAt = 0.15,
-    Carve = true,
+    Crack = true,
+    CrackCount = 4,
+    CrackLength = 1.8,
+    CrackWidth = 0.1,
+    Carve = false,
     DentRadius = 1.5,
     CarvePerHit = 1,
     MaxCells = 80,
@@ -429,6 +435,58 @@ do
         end
     end
 
+    Structures.Crack = function(Structure, Position, Direction, Config)
+        local Normal = Direction.Magnitude > 0.001 and -Direction.Unit or Vector3New(0, 0, 1)
+        local Up = Abs(Normal.Y) < 0.99 and Vector3New(0, 1, 0) or Vector3New(1, 0, 0)
+        local Tangent = Normal:Cross(Up).Unit
+        local Bitangent = Normal:Cross(Tangent).Unit
+        local Origin = Position + Normal * 0.05
+
+        local Host
+        local Nearest = Huge
+
+        for i = 1, Structure.Total do
+            local Cell = Structure.Cells[i]
+
+            if Cell and Cell.Parent then
+                local Distance = (Cell.Position - Position).Magnitude
+
+                if Distance < Nearest then
+                    Nearest = Distance
+                    Host = Cell
+                end
+            end
+        end
+
+        for i = 1, Config.CrackCount do
+            local Angle = Random() * TwoPi
+            local Line = Tangent * Cos(Angle) + Bitangent * Sin(Angle)
+            local Length = Config.CrackLength * (0.55 + Random() * 0.7)
+            local Center = Origin + Line * (Length * 0.5)
+
+            local Crack = NewInstance("Part")
+            Crack.Size = Vector3New(Config.CrackWidth, Config.CrackWidth, Length)
+            Crack.CFrame = NewCFrame(Center, Center + Line)
+            Crack.Color = Config.CrackColor or CrackColor
+            Crack.Material = Enum.Material.Slate
+            Crack.CanCollide = false
+            Crack.CastShadow = false
+
+            if Host then
+                Crack.Anchored = false
+                Crack.Parent = Host
+
+                local Weld = NewInstance("WeldConstraint")
+                Weld.Part0 = Crack
+                Weld.Part1 = Host
+                Weld.Parent = Crack
+            else
+                Crack.Anchored = true
+                Crack.Parent = StandingFolder
+            end
+        end
+    end
+
     Structures.Carve = function(Structure, Position, Config)
         local Radius = Config.DentRadius
 
@@ -521,6 +579,10 @@ do
             CellLookup[Entry.Cell] = nil
 
             Debriswork.Launch(Entry.Cell, Position, Hit, Config)
+        end
+
+        if Config.Crack then
+            Structures.Crack(Structure, Position, Hit, Config)
         end
 
         if Config.Carve then
